@@ -1,0 +1,62 @@
+name: CSSPVP
+version: 1.0.0
+main: com.copestudios.csspvp.CSSPVP
+api-version: 1.21
+description: Cope Studios Simple PVP Plugin
+author: Cope Studios
+commands:
+  csspvp:
+    description: Main plugin command
+    usage: /csspvp [reload|setspawn|spawn|help]
+    aliases: [css]
+    permission: csspvp.use
+  cssarena:
+    description: Arena management command
+    usage: /cssarena [create|delete|setspawn|setcorner1|setcorner2|setlives|setteamsize|join|leave|start|info|list]
+    permission: csspvp.arena
+  cssteam:
+    description: Team management command
+    usage: /cssteam [create|delete|join|leave|add|remove|info|list]
+    permission: csspvp.team
+  cssduel:
+    description: Duel command
+    usage: /cssduel [challenge|accept|decline|random] or /cssduel <player> <arena>
+    permission: csspvp.duel
+  cssrduel:
+    description: Random duel command between two random players
+    usage: /cssrduel <arena>
+    permission: csspvp.admin
+permissions:
+  csspvp.use:
+    description: Allows use of basic plugin features
+    default: true
+  csspvp.admin:
+    description: Allows use of admin commands
+    default: op
+    children:
+      csspvp.use: true
+      csspvp.arena.create: true
+      csspvp.arena.delete: true
+      csspvp.arena.join: true
+      csspvp.team: true
+      csspvp.duel: true
+  csspvp.arena:
+    description: Allows use of arena commands
+    default: true
+    children:
+      csspvp.arena.join: true
+  csspvp.arena.create:
+    description: Allows creating and modifying arenas
+    default: op
+  csspvp.arena.delete:
+    description: Allows deleting arenas
+    default: op
+  csspvp.arena.join:
+    description: Allows joining arenas
+    default: true
+  csspvp.team:
+    description: Allows use of team commands
+    default: true
+  csspvp.duel:
+    description: Allows dueling other players
+    default: true
