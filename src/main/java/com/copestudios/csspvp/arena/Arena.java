@@ -3,10 +3,12 @@ package com.copestudios.csspvp.arena;
 import com.copestudios.csspvp.CSSPVP;
 import com.copestudios.csspvp.messages.MessageManager;
 import com.copestudios.csspvp.team.Team;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.configuration.serialization.ConfigurationSerializable;
 import org.bukkit.configuration.serialization.SerializableAs;
 import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffect;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
@@ -132,11 +134,13 @@ public class Arena implements ConfigurationSerializable {
     }
 
     public boolean addPlayer(Player player) {
-        if (state == ArenaState.ACTIVE || state == ArenaState.ENDING) {
-            return false;
+        // If player is already in an arena, remove them from it first
+        Arena currentArena = CSSPVP.getInstance().getArenaManager().getPlayerArena(player);
+        if (currentArena != null && !currentArena.equals(this)) {
+            currentArena.removePlayer(player);
         }
 
-        if (participants.containsKey(player.getUniqueId())) {
+        if (state == ArenaState.ACTIVE || state == ArenaState.ENDING) {
             return false;
         }
 
@@ -161,6 +165,17 @@ public class Arena implements ConfigurationSerializable {
                 teams.add(newTeam);
             }
         }
+
+        // Teleport player to arena spawn point if it exists
+        if (spawnPoint != null) {
+            player.teleport(spawnPoint);
+        }
+
+        // Enable PVP mode for the player
+        player.setCanPickupItems(true);
+
+        // Set survival mode
+        player.setGameMode(GameMode.SURVIVAL);
 
         // Send join message
         player.sendMessage(CSSPVP.getInstance().getMessageManager().getMessage(
@@ -200,7 +215,7 @@ public class Arena implements ConfigurationSerializable {
     }
 
     public void startArena() {
-        if (state != ArenaState.WAITING || !isSetup()) {
+        if (!isSetup()) {
             return;
         }
 
@@ -212,6 +227,26 @@ public class Arena implements ConfigurationSerializable {
                 Player player = CSSPVP.getInstance().getServer().getPlayer(uuid);
                 if (player != null) {
                     player.teleport(spawnPoint);
+
+                    // Make sure players are in survival mode
+                    player.setGameMode(GameMode.SURVIVAL);
+
+                    // Reset player's health, food, etc.
+                    player.setHealth(player.getMaxHealth());
+                    player.setFoodLevel(20);
+                    player.setSaturation(20);
+                    player.setFireTicks(0);
+
+                    // Enable item pickup
+                    player.setCanPickupItems(true);
+
+                    // Clear any potion effects
+                    for (PotionEffect effect : player.getActivePotionEffects()) {
+                        player.removePotionEffect(effect.getType());
+                    }
+
+                    // Announce PVP enabled immediately - no delay
+                    player.sendMessage(CSSPVP.getInstance().colorizeString("&a&lPVP is now enabled! Battle begins!"));
                 }
             }
         }

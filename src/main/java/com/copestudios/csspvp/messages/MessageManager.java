@@ -160,6 +160,7 @@ public class MessageManager {
             message = message.replace("%prefix%", prefix);
         }
 
-        return message;
+        // Convert to String with colors
+        return plugin.colorizeString(message);
     }
 }

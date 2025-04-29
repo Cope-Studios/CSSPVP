@@ -29,11 +29,26 @@ public class PlayerListener implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+
+        // Clear inventory
+        player.getInventory().clear();
+
+        // Reset gamemode to survival
+        player.setGameMode(GameMode.SURVIVAL);
+
+        // Force player to leave any existing arenas from before they disconnected
+        for (Arena arena : plugin.getArenaManager().getAllArenas()) {
+            if (arena.getParticipants().containsKey(player.getUniqueId())) {
+                arena.removePlayer(player);
+            }
+        }
+
         // Teleport to general spawn if enabled
         if (plugin.getConfigManager().getBoolean("general.spawn-enabled", true)) {
             Location spawnLocation = plugin.getConfigManager().getGeneralSpawn();
             if (spawnLocation != null) {
-                event.getPlayer().teleport(spawnLocation);
+                player.teleport(spawnLocation);
             }
         }
     }
@@ -49,7 +64,7 @@ public class PlayerListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onEntityDamage(EntityDamageByEntityEvent event) {
         // Only handle player-to-player damage
         if (!(event.getEntity() instanceof Player) || !(event.getDamager() instanceof Player)) {
@@ -80,23 +95,12 @@ public class PlayerListener implements Listener {
             }
 
             // Different teams or solo mode, allow damage
+            event.setCancelled(false); // Explicitly allow damage
             return;
         }
 
-        // Check if in any arena
-        boolean victimInArena = plugin.getArenaManager().isLocationInAnyArena(victim.getLocation());
-        boolean attackerInArena = plugin.getArenaManager().isLocationInAnyArena(attacker.getLocation());
-
-        if (victimInArena && attackerInArena) {
-            // Both in arena locations but not properly in an arena (could be spectating)
-            event.setCancelled(true);
-            return;
-        }
-
-        // If PVP outside arenas is disabled, cancel damage
-        if (!plugin.getConfigManager().isPvpOutsideArenaAllowed()) {
-            event.setCancelled(true);
-        }
+        // If we get here, either players aren't in the same active arena or at least one isn't in an arena at all
+        event.setCancelled(true);
     }
 
     @EventHandler
@@ -179,7 +183,7 @@ public class PlayerListener implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onItemDrop(PlayerDropItemEvent event) {
         Player player = event.getPlayer();
 
@@ -188,18 +192,16 @@ public class PlayerListener implements Listener {
             return;
         }
 
+        // Check if player is in an active arena - always allow dropping in arenas
+        Arena arena = plugin.getArenaManager().getPlayerArena(player);
+        if (arena != null && arena.getState() == Arena.ArenaState.ACTIVE) {
+            return; // Allow dropping
+        }
+
         // Check if item dropping is globally disabled
         if (!plugin.getConfigManager().isItemDropAllowed()) {
             event.setCancelled(true);
             return;
-        }
-
-        // Check if player is in an arena
-        Arena arena = plugin.getArenaManager().getPlayerArena(player);
-
-        // Only allow dropping in active arenas
-        if (arena == null || arena.getState() != Arena.ArenaState.ACTIVE) {
-            event.setCancelled(true);
         }
     }
 

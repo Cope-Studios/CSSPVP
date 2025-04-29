@@ -16,6 +16,12 @@ public class ArenaManager {
     private final Map<String, Arena> arenas;
     private File arenasFile;
 
+    // Store players that joined arenas for rduel command
+    private final Map<String, List<UUID>> arenaPlayersHistory = new HashMap<>();
+
+    // Store previous locations for teleportation after duel
+    private final Map<UUID, Location> playerPreviousLocations = new HashMap<>();
+
     static {
         // Register Arena class for serialization
         ConfigurationSerialization.registerClass(Arena.class, "CSSPVP_Arena");
@@ -25,6 +31,72 @@ public class ArenaManager {
         this.plugin = plugin;
         this.arenas = new HashMap<>();
         this.arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
+    }
+
+    /**
+     * Store a player's previous location before teleporting to an arena
+     */
+    public void storePlayerLocation(Player player) {
+        playerPreviousLocations.put(player.getUniqueId(), player.getLocation());
+    }
+
+    /**
+     * Get a player's previous location before they entered an arena
+     */
+    public Location getPlayerPreviousLocation(Player player) {
+        return playerPreviousLocations.get(player.getUniqueId());
+    }
+
+    /**
+     * Remove a player's previous location from storage
+     */
+    public void removePlayerPreviousLocation(Player player) {
+        playerPreviousLocations.remove(player.getUniqueId());
+    }
+
+    /**
+     * Record that a player joined an arena for rduel command
+     */
+    public void recordPlayerJoinedArena(String arenaName, Player player) {
+        List<UUID> players = arenaPlayersHistory.computeIfAbsent(arenaName, k -> new ArrayList<>());
+
+        // Don't add duplicates
+        if (!players.contains(player.getUniqueId())) {
+            players.add(player.getUniqueId());
+        }
+
+        // Keep only the last 20 players to avoid memory leaks
+        if (players.size() > 20) {
+            players.remove(0);
+        }
+    }
+
+    /**
+     * Get random players from an arena's history
+     */
+    public List<Player> getRandomPlayersFromArenaHistory(String arenaName, int count) {
+        List<UUID> players = arenaPlayersHistory.get(arenaName);
+        if (players == null || players.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // Shuffle the list
+        List<UUID> shuffled = new ArrayList<>(players);
+        Collections.shuffle(shuffled);
+
+        // Get the requested number of players
+        List<Player> result = new ArrayList<>();
+        for (UUID uuid : shuffled) {
+            Player player = plugin.getServer().getPlayer(uuid);
+            if (player != null && player.isOnline()) {
+                result.add(player);
+                if (result.size() >= count) {
+                    break;
+                }
+            }
+        }
+
+        return result;
     }
 
     public void loadArenas() {

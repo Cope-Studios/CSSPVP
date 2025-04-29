@@ -1,5 +1,5 @@
 name: CSSPVP
-version: 1.0.0
+version: 1.0.8-5
 main: com.copestudios.csspvp.CSSPVP
 api-version: 1.21
 description: Cope Studios Simple PVP Plugin
@@ -23,8 +23,8 @@ commands:
     usage: /cssduel [challenge|accept|decline|random] or /cssduel <player> <arena>
     permission: csspvp.duel
   cssrduel:
-    description: Random duel command between two random players
-    usage: /cssrduel <arena>
+    description: Random duel command between players in one arena to another arena
+    usage: /cssrduel <source-arena> <target-arena>
     permission: csspvp.admin
 permissions:
   csspvp.use:

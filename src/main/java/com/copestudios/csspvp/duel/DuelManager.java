@@ -3,18 +3,67 @@ package com.copestudios.csspvp.duel;
 import com.copestudios.csspvp.CSSPVP;
 import com.copestudios.csspvp.arena.Arena;
 import com.copestudios.csspvp.messages.MessageManager;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 
 import java.util.*;
 
-public class DuelManager {
+public class DuelManager implements Listener {
     private final CSSPVP plugin;
     private final Map<UUID, Map<UUID, DuelRequest>> pendingDuels; // sender -> (receiver -> request)
+    private final Map<UUID, UUID> activeDuels; // player -> opponent
+    private final Map<UUID, Location> lastLocations; // player -> last location before duel
 
     public DuelManager(CSSPVP plugin) {
         this.plugin = plugin;
         this.pendingDuels = new HashMap<>();
+        this.activeDuels = new HashMap<>();
+        this.lastLocations = new HashMap<>();
+
+        // Register this as a listener for player death events
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+    }
+
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        UUID playerId = player.getUniqueId();
+
+        // Check if this player is in an active duel from cssrduel command
+        if (activeDuels.containsKey(playerId)) {
+            UUID opponentId = activeDuels.get(playerId);
+            Player opponent = plugin.getServer().getPlayer(opponentId);
+
+            if (opponent != null) {
+                // Announce the winner
+                plugin.getServer().broadcastMessage(
+                        plugin.colorizeString("&6&l" + opponent.getName() + " &a&lhas won the duel against &c&l" + player.getName() + "!")
+                );
+
+                // Return the winner to their previous location
+                Location lastLocation = lastLocations.get(opponentId);
+                if (lastLocation != null) {
+                    opponent.teleport(lastLocation);
+                    opponent.sendMessage(plugin.colorizeString("&aYou've been teleported back to your previous location."));
+                }
+
+                // Clean up
+                activeDuels.remove(playerId);
+                activeDuels.remove(opponentId);
+                lastLocations.remove(playerId);
+                lastLocations.remove(opponentId);
+
+                // Remove from arena
+                Arena arena = plugin.getArenaManager().getPlayerArena(opponent);
+                if (arena != null) {
+                    arena.removePlayer(opponent);
+                }
+            }
+        }
     }
 
     public static class DuelRequest {
@@ -53,15 +102,20 @@ public class DuelManager {
     }
 
     public boolean sendDuelRequest(Player sender, Player receiver, String arenaName) {
+        return sendDuelRequest(sender, receiver, arenaName, false);
+    }
+
+    public boolean sendDuelRequest(Player sender, Player receiver, String arenaName, boolean ignoreArenaCheck) {
         // Check if arena exists
         Arena arena = plugin.getArenaManager().getArena(arenaName);
         if (arena == null || !arena.isSetup()) {
             return false;
         }
 
-        // Check if players are already in arena
-        if (plugin.getArenaManager().isPlayerInArena(sender) ||
-                plugin.getArenaManager().isPlayerInArena(receiver)) {
+        // Check if players are already in arena (unless we're ignoring this check)
+        if (!ignoreArenaCheck &&
+                (plugin.getArenaManager().isPlayerInArena(sender) ||
+                        plugin.getArenaManager().isPlayerInArena(receiver))) {
             return false;
         }
 
@@ -137,6 +191,10 @@ public class DuelManager {
     }
 
     public boolean acceptDuelRequest(Player player) {
+        return acceptDuelRequest(player, false);
+    }
+
+    public boolean acceptDuelRequest(Player player, boolean ignoreArenaCheck) {
         // Find requests where this player is the receiver
         DuelRequest acceptedRequest = null;
         UUID senderUUID = null;
@@ -172,6 +230,19 @@ public class DuelManager {
         Arena arena = plugin.getArenaManager().getArena(acceptedRequest.getArenaName());
         if (arena == null || !arena.isSetup()) {
             return false;
+        }
+
+        // Remove players from current arenas if needed and if ignoreArenaCheck is true
+        if (ignoreArenaCheck) {
+            Arena senderArena = plugin.getArenaManager().getPlayerArena(sender);
+            if (senderArena != null) {
+                senderArena.removePlayer(sender);
+            }
+
+            Arena receiverArena = plugin.getArenaManager().getPlayerArena(player);
+            if (receiverArena != null) {
+                receiverArena.removePlayer(player);
+            }
         }
 
         // Notify players
@@ -302,7 +373,14 @@ public class DuelManager {
         Player player1 = eligiblePlayers.get(0);
         Player player2 = eligiblePlayers.get(1);
 
-        // Broadcast message to all players individually
+        // Send individual messages to selected players
+        player1.sendMessage(plugin.colorizeString("&aYou have been selected for a random duel against &e" +
+                player2.getName() + " &ain arena &e" + arenaName + "&a!"));
+
+        player2.sendMessage(plugin.colorizeString("&aYou have been selected for a random duel against &e" +
+                player1.getName() + " &ain arena &e" + arenaName + "&a!"));
+
+        // Broadcast message
         String message = plugin.getMessageManager().getMessageString(
                 MessageManager.DUEL_RANDOM_SELECTED,
                 "player1", player1.getName(),
@@ -349,7 +427,14 @@ public class DuelManager {
         Player player1 = eligiblePlayers.get(0);
         Player player2 = eligiblePlayers.get(1);
 
-        // Broadcast message to all players individually
+        // Send individual messages to selected players
+        player1.sendMessage(plugin.colorizeString("&aYou have been selected for a random duel against &e" +
+                player2.getName() + " &ain arena &e" + arenaName + "&a!"));
+
+        player2.sendMessage(plugin.colorizeString("&aYou have been selected for a random duel against &e" +
+                player1.getName() + " &ain arena &e" + arenaName + "&a!"));
+
+        // Broadcast message
         String message = plugin.getMessageManager().getMessageString(
                 MessageManager.DUEL_RANDOM_SELECTED,
                 "player1", player1.getName(),
@@ -366,6 +451,73 @@ public class DuelManager {
 
         // Start arena
         arena.startArena();
+
+        return true;
+    }
+
+    public boolean startRandomDuelFromArena(Arena sourceArena, Arena targetArena, Map<UUID, Location> previousLocations) {
+        if (sourceArena == null || targetArena == null || !targetArena.isSetup()) {
+            return false;
+        }
+
+        // Get a list of players from the source arena
+        List<Player> playersInSourceArena = new ArrayList<>();
+        for (UUID playerId : sourceArena.getParticipants().keySet()) {
+            Player player = plugin.getServer().getPlayer(playerId);
+            if (player != null && player.isOnline()) {
+                playersInSourceArena.add(player);
+            }
+        }
+
+        // Need at least 2 players in the source arena
+        if (playersInSourceArena.size() < 2) {
+            return false;
+        }
+
+        // Shuffle and take first 2
+        Collections.shuffle(playersInSourceArena);
+        Player player1 = playersInSourceArena.get(0);
+        Player player2 = playersInSourceArena.get(1);
+
+        // Store their current locations
+        lastLocations.put(player1.getUniqueId(), player1.getLocation());
+        lastLocations.put(player2.getUniqueId(), player2.getLocation());
+
+        // Add to the map for tracking in the death event
+        activeDuels.put(player1.getUniqueId(), player2.getUniqueId());
+        activeDuels.put(player2.getUniqueId(), player1.getUniqueId());
+
+        // Also add to the external tracking map if provided
+        if (previousLocations != null) {
+            previousLocations.put(player1.getUniqueId(), player1.getLocation());
+            previousLocations.put(player2.getUniqueId(), player2.getLocation());
+        }
+
+        // Remove players from source arena
+        sourceArena.removePlayer(player1);
+        sourceArena.removePlayer(player2);
+
+        // Send individual messages to selected players
+        player1.sendMessage(plugin.colorizeString("&aYou have been selected for a random duel against &e" +
+                player2.getName() + " &ain arena &e" + targetArena.getName() + "&a!"));
+
+        player2.sendMessage(plugin.colorizeString("&aYou have been selected for a random duel against &e" +
+                player1.getName() + " &ain arena &e" + targetArena.getName() + "&a!"));
+
+        // Broadcast message
+        String message = plugin.colorizeString("&aRandom duel: &e" + player1.getName() +
+                " &avs &e" + player2.getName() + " &ain arena &e" + targetArena.getName() + "&a!");
+
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            player.sendMessage(message);
+        }
+
+        // Add to target arena
+        targetArena.addPlayer(player1);
+        targetArena.addPlayer(player2);
+
+        // Start target arena
+        targetArena.startArena();
 
         return true;
     }

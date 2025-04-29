@@ -4,14 +4,22 @@ import com.copestudios.csspvp.CSSPVP;
 import com.copestudios.csspvp.arena.Arena;
 import com.copestudios.csspvp.duel.DuelManager;
 import com.copestudios.csspvp.messages.MessageManager;
+import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 public class DuelCommands implements CommandExecutor {
     private final CSSPVP plugin;
     private final DuelManager duelManager;
+
+    // Store previous locations for players in random duels
+    private final Map<UUID, Location> previousLocations = new HashMap<>();
 
     public DuelCommands(CSSPVP plugin) {
         this.plugin = plugin;
@@ -29,6 +37,11 @@ public class DuelCommands implements CommandExecutor {
 
         Player player = (Player) sender;
 
+        // Handle cssrduel command - special processing
+        if (label.equalsIgnoreCase("cssrduel")) {
+            return handleRandomArenaPlayers(player, args);
+        }
+
         if (args.length == 0) {
             // Show help
             displayHelp(player);
@@ -44,7 +57,6 @@ public class DuelCommands implements CommandExecutor {
                 return handleAccept(player);
             case "decline":
                 return handleDecline(player);
-            case "csrduel":
             case "r":
             case "random":
                 return handleRandomDuel(player, args);
@@ -56,6 +68,10 @@ public class DuelCommands implements CommandExecutor {
                     newArgs[0] = "challenge";
                     System.arraycopy(args, 0, newArgs, 1, args.length);
                     return handleChallenge(player, newArgs);
+                } else if (target != null) {
+                    // If only player name is provided, show arena selection
+                    plugin.getGuiManager().openDuelArenaMenu(player, target);
+                    return true;
                 }
 
                 // Otherwise show help
@@ -64,14 +80,64 @@ public class DuelCommands implements CommandExecutor {
         }
     }
 
+    // Special handling for the cssrduel command
+    private boolean handleRandomArenaPlayers(Player player, String[] args) {
+        if (!player.isOp()) {
+            player.sendMessage(plugin.getMessageManager().getMessage(
+                    MessageManager.GENERAL_NO_PERMISSION
+            ));
+            return true;
+        }
+
+        if (args.length < 2) {
+            player.sendMessage(plugin.colorizeString("&cUsage: /cssrduel <source-arena> <target-arena>"));
+            return true;
+        }
+
+        String sourceArenaName = args[0];
+        String targetArenaName = args[1];
+
+        // Get the source arena - where players will be selected from
+        Arena sourceArena = plugin.getArenaManager().getArena(sourceArenaName);
+        if (sourceArena == null) {
+            player.sendMessage(plugin.getMessageManager().getMessage(
+                    MessageManager.ARENA_NOT_FOUND,
+                    "name", sourceArenaName
+            ));
+            return true;
+        }
+
+        // Get the target arena - where selected players will duel
+        Arena targetArena = plugin.getArenaManager().getArena(targetArenaName);
+        if (targetArena == null) {
+            player.sendMessage(plugin.getMessageManager().getMessage(
+                    MessageManager.ARENA_NOT_FOUND,
+                    "name", targetArenaName
+            ));
+            return true;
+        }
+
+        // Execute the special random duel
+        if (duelManager.startRandomDuelFromArena(sourceArena, targetArena, previousLocations)) {
+            player.sendMessage(plugin.colorizeString("&aStarted random duel! Selected players from &e" +
+                    sourceArenaName + "&a and teleported them to &e" + targetArenaName + "&a!"));
+        } else {
+            player.sendMessage(plugin.colorizeString("&cFailed to start random duel. Not enough eligible players in source arena."));
+        }
+
+        return true;
+    }
+
     private void displayHelp(Player player) {
-        player.sendMessage(plugin.colorize("&6=== CSSPVP Duel Commands ==="));
-        player.sendMessage(plugin.colorize("&e/cssduel challenge <player> <arena> - &7Challenge a player to a duel"));
-        player.sendMessage(plugin.colorize("&e/cssduel <player> <arena> - &7Short for challenge command"));
-        player.sendMessage(plugin.colorize("&e/cssduel accept - &7Accept a pending duel request"));
-        player.sendMessage(plugin.colorize("&e/cssduel decline - &7Decline a pending duel request"));
-        player.sendMessage(plugin.colorize("&e/cssduel random <arena> - &7Start a random duel (OP only)"));
-        player.sendMessage(plugin.colorize("&e/cssrduel <arena> - &7Start a random duel between 2 random players (OP only)"));
+        // Using the colorizeString method to ensure proper formatting
+        player.sendMessage(plugin.colorizeString("&6=== CSSPVP Duel Commands ==="));
+        player.sendMessage(plugin.colorizeString("&e/cssduel challenge <player> <arena> - &7Challenge a player to a duel"));
+        player.sendMessage(plugin.colorizeString("&e/cssduel <player> <arena> - &7Short for challenge command"));
+        player.sendMessage(plugin.colorizeString("&e/cssduel <player> - &7Open arena selection menu for duel"));
+        player.sendMessage(plugin.colorizeString("&e/cssduel accept - &7Accept a pending duel request"));
+        player.sendMessage(plugin.colorizeString("&e/cssduel decline - &7Decline a pending duel request"));
+        player.sendMessage(plugin.colorizeString("&e/cssduel random <arena> - &7Start a random duel (OP only)"));
+        player.sendMessage(plugin.colorizeString("&e/cssrduel <source-arena> <target-arena> - &7Select 2 random players from source arena and make them duel in target arena"));
     }
 
     private boolean handleChallenge(Player player, String[] args) {
@@ -102,7 +168,7 @@ public class DuelCommands implements CommandExecutor {
 
         // Check if challenging self
         if (target.equals(player)) {
-            player.sendMessage(plugin.colorize("&cYou cannot duel yourself!"));
+            player.sendMessage(plugin.colorizeString("&cYou cannot duel yourself!"));
             return true;
         }
 
@@ -120,18 +186,18 @@ public class DuelCommands implements CommandExecutor {
 
         // Check if arena is setup
         if (!arena.isSetup()) {
-            player.sendMessage(plugin.colorize("&cArena " + arenaName + " is not fully set up yet!"));
+            player.sendMessage(plugin.colorizeString("&cArena " + arenaName + " is not fully set up yet!"));
             return true;
         }
 
         // Check if arena is available
         if (arena.getState() != Arena.ArenaState.INACTIVE) {
-            player.sendMessage(plugin.colorize("&cArena " + arenaName + " is currently in use!"));
+            player.sendMessage(plugin.colorizeString("&cArena " + arenaName + " is currently in use!"));
             return true;
         }
 
-        // Send duel request
-        if (duelManager.sendDuelRequest(player, target, arenaName)) {
+        // Send duel request - don't check if players are in arenas
+        if (duelManager.sendDuelRequest(player, target, arenaName, true)) {
             // Success - messages sent in DuelManager
         } else {
             // Failed - check if there's an existing request
@@ -141,7 +207,7 @@ public class DuelCommands implements CommandExecutor {
                         "player", target.getName()
                 ));
             } else {
-                player.sendMessage(plugin.colorize("&cFailed to send duel request. Players might already be in an arena."));
+                player.sendMessage(plugin.colorizeString("&cFailed to send duel request."));
             }
         }
 
@@ -158,15 +224,15 @@ public class DuelCommands implements CommandExecutor {
 
         // Check if has pending request
         if (!duelManager.hasIncomingRequest(player)) {
-            player.sendMessage(plugin.colorize("&cYou don't have any pending duel requests!"));
+            player.sendMessage(plugin.colorizeString("&cYou don't have any pending duel requests!"));
             return true;
         }
 
-        // Accept request
-        if (duelManager.acceptDuelRequest(player)) {
+        // Accept request - Don't check if players are in arenas
+        if (duelManager.acceptDuelRequest(player, true)) {
             // Success - messages and teleportation handled in DuelManager
         } else {
-            player.sendMessage(plugin.colorize("&cFailed to accept duel request. The request may have expired or the arena is no longer available."));
+            player.sendMessage(plugin.colorizeString("&cFailed to accept duel request. The request may have expired or the arena is no longer available."));
         }
 
         return true;
@@ -182,7 +248,7 @@ public class DuelCommands implements CommandExecutor {
 
         // Check if has pending request
         if (!duelManager.hasIncomingRequest(player)) {
-            player.sendMessage(plugin.colorize("&cYou don't have any pending duel requests!"));
+            player.sendMessage(plugin.colorizeString("&cYou don't have any pending duel requests!"));
             return true;
         }
 
@@ -190,43 +256,13 @@ public class DuelCommands implements CommandExecutor {
         if (duelManager.declineDuelRequest(player)) {
             // Success - messages handled in DuelManager
         } else {
-            player.sendMessage(plugin.colorize("&cFailed to decline duel request. The request may have already expired."));
+            player.sendMessage(plugin.colorizeString("&cFailed to decline duel request. The request may have already expired."));
         }
 
         return true;
     }
 
     private boolean handleRandomDuel(Player player, String[] args) {
-        // For /cssrduel command - random duel with random players (command issuer excluded)
-        if (args[0].equalsIgnoreCase("csrduel") || args[0].equalsIgnoreCase("r")) {
-            if (!player.isOp()) {
-                player.sendMessage(plugin.getMessageManager().getMessage(
-                        MessageManager.GENERAL_NO_PERMISSION
-                ));
-                return true;
-            }
-
-            if (args.length < 2) {
-                player.sendMessage(plugin.getMessageManager().getMessage(
-                        MessageManager.GENERAL_INVALID_ARGS,
-                        "usage", "/cssrduel <arena>"
-                ));
-                return true;
-            }
-
-            String arenaName = args[1];
-
-            // Force random duel between 2 random players (excluding command sender)
-            if (duelManager.startRandomDuel(arenaName, player)) {
-                player.sendMessage(plugin.colorize("&aStarted random duel in arena " + arenaName + "!"));
-            } else {
-                player.sendMessage(plugin.colorize("&cFailed to start random duel. Not enough eligible players or arena not available."));
-            }
-
-            return true;
-        }
-
-        // Regular random duel command
         if (!player.hasPermission("csspvp.admin")) {
             player.sendMessage(plugin.getMessageManager().getMessage(
                     MessageManager.GENERAL_NO_PERMISSION
@@ -246,9 +282,9 @@ public class DuelCommands implements CommandExecutor {
 
         // Start random duel
         if (duelManager.startRandomDuel(arenaName)) {
-            player.sendMessage(plugin.colorize("&aStarted random duel in arena " + arenaName + "!"));
+            player.sendMessage(plugin.colorizeString("&aStarted random duel in arena " + arenaName + "!"));
         } else {
-            player.sendMessage(plugin.colorize("&cFailed to start random duel. Not enough eligible players or arena not available."));
+            player.sendMessage(plugin.colorizeString("&cFailed to start random duel. Not enough eligible players or arena not available."));
         }
 
         return true;
