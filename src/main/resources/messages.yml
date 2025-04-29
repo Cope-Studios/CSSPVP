@@ -1,0 +1,50 @@
+# CSSPVP Messages Configuration
+# Use "&" for legacy color codes or "<color>" for RGB colors with MiniMessage format
+
+general:
+  prefix: "<#FF5555>[CSSPVP]</color> "
+  no_permission: "%prefix%<#FF0000>You don't have permission to do that!</color>"
+  player_only: "%prefix%<#FF0000>This command can only be used by players!</color>"
+  invalid_args: "%prefix%<#FF0000>Invalid arguments! Usage: %usage%</color>"
+  player_not_found: "%prefix%<#FF0000>Player %player% not found!</color>"
+
+arena:
+  created: "%prefix%<#55FF55>Arena %name% has been created successfully!</color>"
+  deleted: "%prefix%<#55FF55>Arena %name% has been deleted successfully!</color>"
+  not_found: "%prefix%<#FF0000>Arena %name% not found!</color>"
+  already_exists: "%prefix%<#FF0000>Arena %name% already exists!</color>"
+  spawn_set: "%prefix%<#55FF55>Spawn point for arena %name% has been set!</color>"
+  corner_set: "%prefix%<#55FF55>Corner %number% for arena %name% has been set!</color>"
+  join: "%prefix%<#55FF55>You have joined arena %name%!</color>"
+  leave: "%prefix%<#55FF55>You have left arena %name%!</color>"
+  full: "%prefix%<#FF0000>Arena %name% is full!</color>"
+  start: "%prefix%<#55FF55>Arena %name% has started! Good luck!</color>"
+  end: "%prefix%<#55FF55>Arena %name% has ended!</color>"
+  winner: "%prefix%<#FFFF55>%player% has won in arena %name%!</color>"
+  kill: "%prefix%<#55FFFF>%killer% killed %victim%!</color>"
+  death: "%prefix%<#FF5555>You died! Lives remaining: %lives%</color>"
+  spectator: "%prefix%<#AAAAAA>You are now spectating arena %name%!</color>"
+
+team:
+  created: "%prefix%<#55FF55>Team %name% has been created successfully!</color>"
+  deleted: "%prefix%<#55FF55>Team %name% has been deleted successfully!</color>"
+  not_found: "%prefix%<#FF0000>Team %name% not found!</color>"
+  already_exists: "%prefix%<#FF0000>Team %name% already exists!</color>"
+  join: "%prefix%<#55FF55>You have joined team %name%!</color>"
+  leave: "%prefix%<#55FF55>You have left team %name%!</color>"
+  full: "%prefix%<#FF0000>Team %name% is full!</color>"
+  player_added: "%prefix%<#55FF55>%player% has been added to team %name%!</color>"
+  player_removed: "%prefix%<#55FF55>%player% has been removed from team %name%!</color>"
+
+duel:
+  sent: "%prefix%<#55FF55>Duel request sent to %player%!</color>"
+  received: "%prefix%<#FFFF55>%player% has challenged you to a duel in arena %arena%! Type /cssduel accept to accept.</color>"
+  accepted: "%prefix%<#55FF55>You accepted %player%'s duel request!</color>"
+  declined: "%prefix%<#FF5555>You declined %player%'s duel request!</color>"
+  expired: "%prefix%<#FF5555>Duel request from %player% has expired!</color>"
+  already_sent: "%prefix%<#FF5555>You already have a pending duel request with %player%!</color>"
+  random_selected: "%prefix%<#55FF55>Random duel: %player1% vs %player2% in arena %arena%!</color>"
+
+spawn:
+  set: "%prefix%<#55FF55>General spawn point has been set!</color>"
+  teleport: "%prefix%<#55FF55>Teleported to the general spawn point!</color>"
