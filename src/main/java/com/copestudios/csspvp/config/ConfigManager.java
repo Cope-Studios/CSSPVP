@@ -1,155 +1,221 @@
 package com.copestudios.csspvp.config;
 
 import com.copestudios.csspvp.CSSPVP;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.util.logging.Level;
 
 public class ConfigManager {
+
     private final CSSPVP plugin;
+
     private FileConfiguration config;
     private File configFile;
+
+    private FileConfiguration arenas;
+    private File arenasFile;
+
+    private FileConfiguration zones;
+    private File zonesFile;
+
+    private FileConfiguration messages;
+    private File messagesFile;
+
+    private FileConfiguration duelData;
+    private File duelDataFile;
 
     public ConfigManager(CSSPVP plugin) {
         this.plugin = plugin;
     }
 
-    public void loadConfig() {
-        // Create default config if it doesn't exist
-        if (!new File(plugin.getDataFolder(), "config.yml").exists()) {
-            plugin.saveDefaultConfig();
+    public void setupConfigs() {
+        // Main config.yml
+        if (!plugin.getDataFolder().exists()) {
+            plugin.getDataFolder().mkdir();
         }
 
-        // Load config
         configFile = new File(plugin.getDataFolder(), "config.yml");
+        if (!configFile.exists()) {
+            plugin.saveResource("config.yml", false);
+        }
         config = YamlConfiguration.loadConfiguration(configFile);
+        setupDefaultConfig();
 
-        // Set defaults if they don't exist
-        setDefaults();
+        // Arenas config
+        arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
+        if (!arenasFile.exists()) {
+            try {
+                arenasFile.createNewFile();
+                arenas = YamlConfiguration.loadConfiguration(arenasFile);
+                arenas.save(arenasFile);
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.SEVERE, "Could not create arenas.yml", e);
+            }
+        } else {
+            arenas = YamlConfiguration.loadConfiguration(arenasFile);
+        }
 
-        plugin.getLogger().info("Configuration loaded successfully!");
+        // Zones config
+        zonesFile = new File(plugin.getDataFolder(), "zones.yml");
+        if (!zonesFile.exists()) {
+            try {
+                zonesFile.createNewFile();
+                zones = YamlConfiguration.loadConfiguration(zonesFile);
+                zones.save(zonesFile);
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.SEVERE, "Could not create zones.yml", e);
+            }
+        } else {
+            zones = YamlConfiguration.loadConfiguration(zonesFile);
+        }
+
+        // Messages config
+        messagesFile = new File(plugin.getDataFolder(), "messages.yml");
+        if (!messagesFile.exists()) {
+            plugin.saveResource("messages.yml", false);
+        }
+        messages = YamlConfiguration.loadConfiguration(messagesFile);
+
+        // Duel data config
+        duelDataFile = new File(plugin.getDataFolder(), "dueldata.yml");
+        if (!duelDataFile.exists()) {
+            try {
+                duelDataFile.createNewFile();
+                duelData = YamlConfiguration.loadConfiguration(duelDataFile);
+                duelData.save(duelDataFile);
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.SEVERE, "Could not create dueldata.yml", e);
+            }
+        } else {
+            duelData = YamlConfiguration.loadConfiguration(duelDataFile);
+        }
+
+        // Create cache directories for arenas
+        File cacheDir = new File(plugin.getDataFolder(), "cache");
+        if (!cacheDir.exists()) {
+            cacheDir.mkdir();
+        }
+    }
+    private void setupDefaultConfig() {
+        // Set default values if they don't exist
+        config.addDefault("lobby.prevent-block-break", true);
+        config.addDefault("lobby.prevent-block-place", true);
+        config.addDefault("lobby.prevent-damage", true);
+        config.addDefault("lobby.prevent-player-damage", true);
+        config.addDefault("lobby.op-bypass", true);
+        config.addDefault("arena.default-kit", "default");
+        config.addDefault("duel.use-arena-inventory", true);
+        config.addDefault("duel.request-timeout", 60);
+        config.addDefault("duel.countdown", 10);
+        config.addDefault("random-duel.countdown", 5);
+        config.options().copyDefaults(true);
+        saveConfig();
     }
 
-    private void setDefaults() {
-        Map<String, Object> defaults = new HashMap<>();
-        defaults.put("general.spawn-enabled", true);
-        defaults.put("general.spawn-location", null);
-        defaults.put("arena.default-lives", 3);
-        defaults.put("arena.default-team-size", 1);
-        defaults.put("arena.enable-random-duels", true);
-        defaults.put("gui.title-color", "#FF5555");
-        defaults.put("gui.button-color", "#55FF55");
-        defaults.put("gui.border-color", "#5555FF");
-        defaults.put("protection.prevent-pvp-outside-arena", true);
-        defaults.put("protection.prevent-block-break", true);
-        defaults.put("protection.prevent-block-place", true);
-        defaults.put("protection.prevent-item-drop", true);
-        defaults.put("protection.prevent-hunger", true);
+    public FileConfiguration getConfig() {
+        return config;
+    }
 
-        boolean needsSave = false;
+    public FileConfiguration getArenas() {
+        return arenas;
+    }
 
-        for (Map.Entry<String, Object> entry : defaults.entrySet()) {
-            String path = entry.getKey();
-            Object defaultValue = entry.getValue();
+    public FileConfiguration getZones() {
+        return zones;
+    }
 
-            if (!config.contains(path)) {
-                config.set(path, defaultValue);
-                needsSave = true;
-            }
-        }
+    public FileConfiguration getMessages() {
+        return messages;
+    }
 
-        if (needsSave) {
-            saveConfig();
-        }
+    public FileConfiguration getDuelData() {
+        return duelData;
     }
 
     public void saveConfig() {
         try {
             config.save(configFile);
-        } catch (Exception ex) {
-            plugin.getLogger().severe("Could not save config to " + configFile.getName() + ": " + ex.getMessage());
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save config.yml", e);
         }
     }
 
-    public String getString(String path, String defaultValue) {
-        return config.getString(path, defaultValue);
+    public void saveArenas() {
+        try {
+            arenas.save(arenasFile);
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save arenas.yml", e);
+        }
     }
 
-    public int getInt(String path, int defaultValue) {
-        return config.getInt(path, defaultValue);
+    public void saveZones() {
+        try {
+            zones.save(zonesFile);
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save zones.yml", e);
+        }
     }
 
-    public boolean getBoolean(String path, boolean defaultValue) {
-        return config.getBoolean(path, defaultValue);
+    public void saveMessages() {
+        try {
+            messages.save(messagesFile);
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save messages.yml", e);
+        }
     }
 
-    public Location getLocation(String path) {
-        return config.getLocation(path);
+    public void saveDuelData() {
+        try {
+            duelData.save(duelDataFile);
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save dueldata.yml", e);
+        }
     }
 
-    public void setLocation(String path, Location location) {
-        config.set(path, location);
+    public void saveAllConfigs() {
         saveConfig();
+        saveArenas();
+        saveZones();
+        saveMessages();
+        saveDuelData();
     }
 
-    public void set(String path, Object value) {
-        config.set(path, value);
+    public void reloadAllConfigs() {
+        config = YamlConfiguration.loadConfiguration(configFile);
+        arenas = YamlConfiguration.loadConfiguration(arenasFile);
+        zones = YamlConfiguration.loadConfiguration(zonesFile);
+        messages = YamlConfiguration.loadConfiguration(messagesFile);
+        duelData = YamlConfiguration.loadConfiguration(duelDataFile);
+    }
+
+    public Location getLobbyLocation() {
+        if (!config.contains("lobby.world")) {
+            return null;
+        }
+
+        World world = Bukkit.getWorld(config.getString("lobby.world"));
+        double x = config.getDouble("lobby.x");
+        double y = config.getDouble("lobby.y");
+        double z = config.getDouble("lobby.z");
+        float yaw = (float) config.getDouble("lobby.yaw");
+        float pitch = (float) config.getDouble("lobby.pitch");
+
+        return new Location(world, x, y, z, yaw, pitch);
+    }
+
+    public void setLobbyLocation(Location location) {
+        config.set("lobby.world", location.getWorld().getName());
+        config.set("lobby.x", location.getX());
+        config.set("lobby.y", location.getY());
+        config.set("lobby.z", location.getZ());
+        config.set("lobby.yaw", location.getYaw());
+        config.set("lobby.pitch", location.getPitch());
         saveConfig();
-    }
-
-    public Location getGeneralSpawn() {
-        return getLocation("general.spawn-location");
-    }
-
-    public void setGeneralSpawn(Location location) {
-        setLocation("general.spawn-location", location);
-    }
-
-    public boolean isPvpOutsideArenaAllowed() {
-        return !getBoolean("protection.prevent-pvp-outside-arena", true);
-    }
-
-    public boolean isBlockBreakAllowed() {
-        return !getBoolean("protection.prevent-block-break", true);
-    }
-
-    public boolean isBlockPlaceAllowed() {
-        return !getBoolean("protection.prevent-block-place", true);
-    }
-
-    public boolean isItemDropAllowed() {
-        return !getBoolean("protection.prevent-item-drop", true);
-    }
-
-    public boolean isHungerEnabled() {
-        return !getBoolean("protection.prevent-hunger", true);
-    }
-
-    public int getDefaultLives() {
-        return getInt("arena.default-lives", 3);
-    }
-
-    public int getDefaultTeamSize() {
-        return getInt("arena.default-team-size", 1);
-    }
-
-    public boolean isRandomDuelsEnabled() {
-        return getBoolean("arena.enable-random-duels", true);
-    }
-
-    public String getTitleColor() {
-        return getString("gui.title-color", "#FF5555");
-    }
-
-    public String getButtonColor() {
-        return getString("gui.button-color", "#55FF55");
-    }
-
-    public String getBorderColor() {
-        return getString("gui.border-color", "#5555FF");
     }
 }

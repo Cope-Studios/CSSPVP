@@ -1,140 +1,127 @@
 package com.copestudios.csspvp;
 
-import com.copestudios.csspvp.arena.ArenaManager;
-import com.copestudios.csspvp.commands.AdminCommands;
-import com.copestudios.csspvp.commands.ArenaCommands;
-import com.copestudios.csspvp.commands.DuelCommands;
-import com.copestudios.csspvp.commands.TeamCommands;
+import com.copestudios.csspvp.commands.*;
+import com.copestudios.csspvp.config.ArenaConfig;
 import com.copestudios.csspvp.config.ConfigManager;
-import com.copestudios.csspvp.gui.GuiListener;
-import com.copestudios.csspvp.gui.GuiManager;
-import com.copestudios.csspvp.listeners.PlayerListener;
-import com.copestudios.csspvp.messages.MessageManager;
-import com.copestudios.csspvp.team.TeamManager;
+import com.copestudios.csspvp.config.MessageConfig;
+import com.copestudios.csspvp.listeners.*;
+import com.copestudios.csspvp.managers.*;
+import com.copestudios.csspvp.utils.ColorUtils;
+import org.bukkit.Bukkit;
+import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextColor;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.md_5.bungee.api.ChatColor;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class CSSPVP extends JavaPlugin {
+
     private static CSSPVP instance;
-    private static final Component PREFIX = Component.text("[CSSPVP] ")
-            .color(TextColor.color(0xFF5555));
-
     private ConfigManager configManager;
-    private MessageManager messageManager;
     private ArenaManager arenaManager;
-    private TeamManager teamManager;
-    private GuiManager guiManager;
-    private GuiListener guiListener;
-
-    // Pattern for hex color codes like &#RRGGBB
-    private static final Pattern HEX_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
+    private DuelManager duelManager;
+    private RandomDuelManager randomDuelManager;
+    private KitManager kitManager;
+    private MessageConfig messageConfig;
+    private ConsoleCommandSender console;
 
     @Override
     public void onEnable() {
         instance = this;
+        console = Bukkit.getConsoleSender();
+
+        // Initialize configurations
+        configManager = new ConfigManager(this);
+        configManager.setupConfigs();
+
+        // Initialize message system
+        messageConfig = new MessageConfig(this);
+        messageConfig.loadMessages();
 
         // Initialize managers
-        configManager = new ConfigManager(this);
-        messageManager = new MessageManager(this);
         arenaManager = new ArenaManager(this);
-        teamManager = new TeamManager(this);
-        guiManager = new GuiManager(this);
-
-        // Register GUI listener
-        guiListener = new GuiListener(this);
+        duelManager = new DuelManager(this);
+        randomDuelManager = new RandomDuelManager(this);
+        kitManager = new KitManager(this);
 
         // Register commands
-        getCommand("csspvp").setExecutor(new AdminCommands(this));
-        getCommand("cssarena").setExecutor(new ArenaCommands(this));
-        getCommand("cssteam").setExecutor(new TeamCommands(this));
-        getCommand("cssduel").setExecutor(new DuelCommands(this));
+        registerCommands();
 
-        // Register listeners
-        getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+        // Register event listeners
+        registerListeners();
 
-        // Load data
-        configManager.loadConfig();
-        messageManager.loadMessages();
-        arenaManager.loadArenas();
-        teamManager.loadTeams();
-
-        getLogger().info("CSSPVP has been enabled!");
+        console.sendMessage(ColorUtils.colorize("&a[CSSPVP] Plugin enabled successfully!"));
     }
 
     @Override
     public void onDisable() {
-        // Save data
+        // Save all data
+        configManager.saveAllConfigs();
         arenaManager.saveArenas();
-        teamManager.saveTeams();
+        duelManager.saveDuelData();
 
-        getLogger().info("CSSPVP has been disabled!");
+        // Clean up resources
+        arenaManager.cleanUp();
+        duelManager.cleanUp();
+        randomDuelManager.cleanUp();
+
+        console.sendMessage(ColorUtils.colorize("&c[CSSPVP] Plugin disabled!"));
+        instance = null;
     }
 
-    public Component colorize(String text) {
-        // First, handle legacy color codes (&)
-        String legacyConverted = ChatColor.translateAlternateColorCodes('&', text);
+    private void registerCommands() {
+        // Register main command and subcommands
+        CSPCommand mainCommand = new CSPCommand(this);
+        getCommand("csp").setExecutor(mainCommand);
+        getCommand("csp").setTabCompleter(mainCommand);
 
-        // Then handle hex color codes (&#RRGGBB)
-        Matcher matcher = HEX_PATTERN.matcher(legacyConverted);
-        StringBuffer buffer = new StringBuffer();
+        // Register arena commands
+        CSACommand arenaCommand = new CSACommand(this);
+        getCommand("csa").setExecutor(arenaCommand);
+        getCommand("csa").setTabCompleter(arenaCommand);
 
-        while (matcher.find()) {
-            String hexCode = matcher.group(1);
-            matcher.appendReplacement(buffer, ChatColor.of("#" + hexCode).toString());
-        }
-        matcher.appendTail(buffer);
+        // Register duel commands
+        CSDCommand duelCommand = new CSDCommand(this);
+        getCommand("csd").setExecutor(duelCommand);
+        getCommand("csd").setTabCompleter(duelCommand);
 
-        // Finally convert to a Component using MiniMessage
-        return MiniMessage.miniMessage().deserialize(buffer.toString());
+        // Register random duel commands
+        CSRDCommand randomDuelCommand = new CSRDCommand(this);
+        getCommand("csrd").setExecutor(randomDuelCommand);
+        getCommand("csrd").setTabCompleter(randomDuelCommand);
     }
 
-    public String colorizeString(String text) {
-        // Handle legacy color codes (&)
-        String legacyConverted = ChatColor.translateAlternateColorCodes('&', text);
-
-        // Handle hex color codes (&#RRGGBB)
-        Matcher matcher = HEX_PATTERN.matcher(legacyConverted);
-        StringBuffer buffer = new StringBuffer();
-
-        while (matcher.find()) {
-            String hexCode = matcher.group(1);
-            matcher.appendReplacement(buffer, ChatColor.of("#" + hexCode).toString());
-        }
-        matcher.appendTail(buffer);
-
-        return buffer.toString();
+    private void registerListeners() {
+        // Register event listeners
+        getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+        getServer().getPluginManager().registerEvents(new ArenaListener(this), this);
+        getServer().getPluginManager().registerEvents(new DuelListener(this), this);
+        getServer().getPluginManager().registerEvents(new InventoryListener(this), this);
+        getServer().getPluginManager().registerEvents(new ChatListener(this), this);
     }
 
     public static CSSPVP getInstance() {
         return instance;
     }
 
-    public static Component getPrefix() {
-        return PREFIX;
-    }
-
     public ConfigManager getConfigManager() {
         return configManager;
-    }
-
-    public MessageManager getMessageManager() {
-        return messageManager;
     }
 
     public ArenaManager getArenaManager() {
         return arenaManager;
     }
 
-    public TeamManager getTeamManager() {
-        return teamManager;
+    public DuelManager getDuelManager() {
+        return duelManager;
     }
 
-    public GuiManager getGuiManager() {
-        return guiManager;
+    public RandomDuelManager getRandomDuelManager() {
+        return randomDuelManager;
+    }
+
+    public KitManager getKitManager() {
+        return kitManager;
+    }
+
+    public MessageConfig getMessageConfig() {
+        return messageConfig;
     }
 }

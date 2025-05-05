@@ -1,54 +1,26 @@
-# CSSPVP Configuration File
+# CSSPVP Configuration
 
-general:
-  # Whether the general spawn is enabled
-  spawn-enabled: true
-  # The general spawn location (set with /csspvp setspawn)
-  # spawn-location: will be set when you use the command
-
-arena:
-  # Default lives per player
-  default-lives: 3
-  # Default team size (1 for solo)
-  default-team-size: 1
-  # Enable random duels
-  enable-random-duels: true
-  # Cooldown between random duels (in seconds)
-  random-duel-cooldown: 300
-
-# GUI customization
-gui:
-  # Colors can be hex codes (#RRGGBB) or color names
-  title-color: "#FF5555"
-  button-color: "#55FF55"
-  border-color: "#5555FF"
-  # Item to use for arena selection
-  arena-item: "DIAMOND_SWORD"
-  # Item to use for team selection
-  team-item: "SHIELD"
-  # Item to use for duel selection
-  duel-item: "GOLDEN_SWORD"
-
-# Protection settings
-protection:
-  # Prevent PVP outside arenas
-  prevent-pvp-outside-arena: true
-  # Prevent block breaking outside arenas
+# Lobby settings
+lobby:
   prevent-block-break: true
-  # Prevent block placing outside arenas
   prevent-block-place: true
-  # Prevent item dropping outside arenas
-  prevent-item-drop: true
-  # Prevent hunger in lobby areas
+  prevent-damage: true
+  prevent-player-damage: true
   prevent-hunger: true
-  # Prevent inventory interaction outside arenas
-  prevent-inventory-interaction: false
+  clear-inventory-on-join: true
+  op-bypass: true
 
-# Permission nodes
-permissions:
-  admin: "csspvp.admin"
-  create: "csspvp.arena.create"
-  delete: "csspvp.arena.delete"
-  join: "csspvp.arena.join"
-  team: "csspvp.team"
-  duel: "csspvp.duel"
+# Arena settings
+arena:
+  default-kit: default
+  prevent-hunger: false
+
+# Duel settings
+duel:
+  use-arena-inventory: true
+  request-timeout: 60
+  countdown: 10
+
+# Random duel settings
+random-duel:
+  countdown: 5

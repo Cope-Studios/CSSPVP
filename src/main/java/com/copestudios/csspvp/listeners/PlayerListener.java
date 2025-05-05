@@ -2,8 +2,7 @@ package com.copestudios.csspvp.listeners;
 
 import com.copestudios.csspvp.CSSPVP;
 import com.copestudios.csspvp.arena.Arena;
-import com.copestudios.csspvp.arena.ArenaManager;
-import com.copestudios.csspvp.messages.MessageManager;
+import com.copestudios.csspvp.duel.Duel;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -13,14 +12,20 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.scheduler.BukkitRunnable;
 
 public class PlayerListener implements Listener {
+
     private final CSSPVP plugin;
 
     public PlayerListener(CSSPVP plugin) {
@@ -31,25 +36,15 @@ public class PlayerListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        // Clear inventory
-        player.getInventory().clear();
-
-        // Reset gamemode to survival
-        player.setGameMode(GameMode.SURVIVAL);
-
-        // Force player to leave any existing arenas from before they disconnected
-        for (Arena arena : plugin.getArenaManager().getAllArenas()) {
-            if (arena.getParticipants().containsKey(player.getUniqueId())) {
-                arena.removePlayer(player);
-            }
+        // Teleport to lobby if set
+        Location lobby = plugin.getConfigManager().getLobbyLocation();
+        if (lobby != null) {
+            player.teleport(lobby);
         }
 
-        // Teleport to general spawn if enabled
-        if (plugin.getConfigManager().getBoolean("general.spawn-enabled", true)) {
-            Location spawnLocation = plugin.getConfigManager().getGeneralSpawn();
-            if (spawnLocation != null) {
-                player.teleport(spawnLocation);
-            }
+        // Clear inventory if configured to do so
+        if (plugin.getConfigManager().getConfig().getBoolean("lobby.clear-inventory-on-join", true)) {
+            player.getInventory().clear();
         }
     }
 
@@ -57,66 +52,65 @@ public class PlayerListener implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
 
-        // Remove from arena if in one
-        Arena arena = plugin.getArenaManager().getPlayerArena(player);
-        if (arena != null) {
-            arena.removePlayer(player);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onEntityDamage(EntityDamageByEntityEvent event) {
-        // Only handle player-to-player damage
-        if (!(event.getEntity() instanceof Player) || !(event.getDamager() instanceof Player)) {
-            return;
+        // Check if player is in arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            plugin.getArenaManager().leaveArena(player);
         }
 
-        Player victim = (Player) event.getEntity();
-        Player attacker = (Player) event.getDamager();
-
-        // Check if in same arena
-        Arena victimArena = plugin.getArenaManager().getPlayerArena(victim);
-        Arena attackerArena = plugin.getArenaManager().getPlayerArena(attacker);
-
-        // If both in same arena and arena is active, allow PVP
-        if (victimArena != null && attackerArena != null
-                && victimArena.equals(attackerArena)
-                && victimArena.getState() == Arena.ArenaState.ACTIVE) {
-
-            // If team-based, check if they're on the same team
-            if (victimArena.getTeamSize() > 1) {
-                for (com.copestudios.csspvp.team.Team team : victimArena.getTeams()) {
-                    if (team.isMember(victim.getUniqueId()) && team.isMember(attacker.getUniqueId())) {
-                        // Same team, cancel damage
-                        event.setCancelled(true);
-                        return;
-                    }
-                }
-            }
-
-            // Different teams or solo mode, allow damage
-            event.setCancelled(false); // Explicitly allow damage
-            return;
+        // Check if player is in duel
+        if (plugin.getDuelManager().isInDuel(player)) {
+            Duel duel = plugin.getDuelManager().getPlayerDuel(player);
+            plugin.getDuelManager().forfeitDuel(player);
         }
 
-        // If we get here, either players aren't in the same active arena or at least one isn't in an arena at all
-        event.setCancelled(true);
+        // Check if player is in random duel
+        if (plugin.getRandomDuelManager().isInRandomDuel(player)) {
+            plugin.getRandomDuelManager().forfeitRandomDuel(player);
+        }
     }
 
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
-        Player killer = player.getKiller();
 
-        // Check if player is in an arena
-        Arena arena = plugin.getArenaManager().getPlayerArena(player);
-        if (arena != null) {
-            // Prevent drops in arena
+        // Check if player is in arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            // Prevent item drops if configured
+            Arena arena = plugin.getArenaManager().getPlayerArena(player);
+            if (!arena.getSettings().canDropItems()) {
+                event.getDrops().clear();
+            }
+
+            // Reduce lives
+            plugin.getArenaManager().reducePlayerLife(player);
+
+            // Schedule respawn at arena spawn
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (player.isOnline()) {
+                        player.spigot().respawn();
+                    }
+                }
+            }.runTaskLater(plugin, 1L);
+        }
+
+        // Check if player is in duel
+        if (plugin.getDuelManager().isInDuel(player)) {
+            Duel duel = plugin.getDuelManager().getPlayerDuel(player);
+
+            // Prevent item drops
             event.getDrops().clear();
-            event.setDroppedExp(0);
 
-            // Handle arena death
-            arena.onPlayerDeath(player, killer);
+            // End duel with opponent as winner
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (duel.getState() != Duel.DuelState.FINISHED) {
+                        plugin.getDuelManager().endDuel(duel, duel.getOpponent(player.getUniqueId()));
+                    }
+                }
+            }.runTaskLater(plugin, 1L);
         }
     }
 
@@ -124,115 +118,220 @@ public class PlayerListener implements Listener {
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
 
-        // If player was in an arena, respawn at arena spawn point or general spawn
-        Arena arena = plugin.getArenaManager().getPlayerArena(player);
-        if (arena != null && arena.getSpawnPoint() != null) {
-            event.setRespawnLocation(arena.getSpawnPoint());
-        } else if (plugin.getConfigManager().getGeneralSpawn() != null) {
-            event.setRespawnLocation(plugin.getConfigManager().getGeneralSpawn());
+        // Check if player is in arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            Arena arena = plugin.getArenaManager().getPlayerArena(player);
+
+            // Set respawn location to arena spawn
+            event.setRespawnLocation(arena.getSpawnLocation());
+
+            // Give arena kit after respawn
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (player.isOnline()) {
+                        int delay = arena.getSettings().getKitDelay();
+                        plugin.getKitManager().giveKitWithDelay(player, arena.getName(), delay);
+                    }
+                }
+            }.runTaskLater(plugin, 5L);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
 
-        // If player is op or in creative, allow block breaking
-        if (player.isOp() || player.getGameMode() == GameMode.CREATIVE) {
-            return;
+        // Check if in the lobby area
+        if (isInLobby(player) && !canBypassLobbyRestrictions(player)) {
+            if (plugin.getConfigManager().getConfig().getBoolean("lobby.prevent-block-break", true)) {
+                event.setCancelled(true);
+            }
         }
 
-        // Check if block breaking is globally disabled
-        if (!plugin.getConfigManager().isBlockBreakAllowed()) {
+        // Check if in an arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            Arena arena = plugin.getArenaManager().getPlayerArena(player);
             event.setCancelled(true);
-            return;
         }
 
-        // Check if the block is in an arena
-        Arena arena = plugin.getArenaManager().getArenaAtLocation(event.getBlock().getLocation());
-
-        // Only allow breaking in active arenas the player is in
-        if (arena == null || arena.getState() != Arena.ArenaState.ACTIVE ||
-                !arena.getParticipants().containsKey(player.getUniqueId())) {
+        // Check if in a duel
+        if (plugin.getDuelManager().isInDuel(player)) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
 
-        // If player is op or in creative, allow block placing
-        if (player.isOp() || player.getGameMode() == GameMode.CREATIVE) {
-            return;
+        // Check if in the lobby area
+        if (isInLobby(player) && !canBypassLobbyRestrictions(player)) {
+            if (plugin.getConfigManager().getConfig().getBoolean("lobby.prevent-block-place", true)) {
+                event.setCancelled(true);
+            }
         }
 
-        // Check if block placing is globally disabled
-        if (!plugin.getConfigManager().isBlockPlaceAllowed()) {
+        // Check if in an arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            Arena arena = plugin.getArenaManager().getPlayerArena(player);
             event.setCancelled(true);
-            return;
         }
 
-        // Check if the block is in an arena
-        Arena arena = plugin.getArenaManager().getArenaAtLocation(event.getBlock().getLocation());
-
-        // Only allow placing in active arenas the player is in
-        if (arena == null || arena.getState() != Arena.ArenaState.ACTIVE ||
-                !arena.getParticipants().containsKey(player.getUniqueId())) {
+        // Check if in a duel
+        if (plugin.getDuelManager().isInDuel(player)) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onItemDrop(PlayerDropItemEvent event) {
-        Player player = event.getPlayer();
-
-        // If player is op or in creative, allow item dropping
-        if (player.isOp() || player.getGameMode() == GameMode.CREATIVE) {
-            return;
-        }
-
-        // Check if player is in an active arena - always allow dropping in arenas
-        Arena arena = plugin.getArenaManager().getPlayerArena(player);
-        if (arena != null && arena.getState() == Arena.ArenaState.ACTIVE) {
-            return; // Allow dropping
-        }
-
-        // Check if item dropping is globally disabled
-        if (!plugin.getConfigManager().isItemDropAllowed()) {
-            event.setCancelled(true);
-            return;
-        }
-    }
-
-    @EventHandler
-    public void onFoodLevelChange(FoodLevelChangeEvent event) {
-        // Only handle players
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onEntityDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player)) {
             return;
         }
 
         Player player = (Player) event.getEntity();
 
-        // Check if hunger is disabled
-        if (!plugin.getConfigManager().isHungerEnabled()) {
-            // Only cancel hunger loss (not gain)
-            if (event.getFoodLevel() < player.getFoodLevel()) {
+        // Check if in the lobby area
+        if (isInLobby(player) && !canBypassLobbyRestrictions(player)) {
+            if (plugin.getConfigManager().getConfig().getBoolean("lobby.prevent-damage", true)) {
                 event.setCancelled(true);
-                return;
             }
         }
 
-        // Check if player is in an active arena
-        Arena arena = plugin.getArenaManager().getPlayerArena(player);
-        if (arena != null && arena.getState() == Arena.ArenaState.ACTIVE) {
-            // Allow hunger in active arenas
+        // Check if in a duel countdown
+        if (plugin.getDuelManager().isInDuel(player)) {
+            Duel duel = plugin.getDuelManager().getPlayerDuel(player);
+            if (duel.getState() == Duel.DuelState.COUNTDOWN) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player) || !(event.getDamager() instanceof Player)) {
             return;
         }
 
-        // Prevent hunger loss outside arenas
-        if (event.getFoodLevel() < player.getFoodLevel()) {
-            event.setCancelled(true);
+        Player player = (Player) event.getEntity();
+        Player damager = (Player) event.getDamager();
+
+        // Check if in the lobby area
+        if ((isInLobby(player) || isInLobby(damager)) &&
+                (!canBypassLobbyRestrictions(player) || !canBypassLobbyRestrictions(damager))) {
+            if (plugin.getConfigManager().getConfig().getBoolean("lobby.prevent-player-damage", true)) {
+                event.setCancelled(true);
+            }
         }
+
+        // Check if in same arena
+        if (plugin.getArenaManager().isInArena(player) && plugin.getArenaManager().isInArena(damager)) {
+            Arena playerArena = plugin.getArenaManager().getPlayerArena(player);
+            Arena damagerArena = plugin.getArenaManager().getPlayerArena(damager);
+
+            if (!playerArena.getName().equals(damagerArena.getName())) {
+                event.setCancelled(true);
+            }
+        }
+
+        // Check if in a duel
+        if (plugin.getDuelManager().isInDuel(player) && plugin.getDuelManager().isInDuel(damager)) {
+            Duel playerDuel = plugin.getDuelManager().getPlayerDuel(player);
+            Duel damagerDuel = plugin.getDuelManager().getPlayerDuel(damager);
+
+            if (playerDuel != damagerDuel) {
+                event.setCancelled(true);
+            } else if (playerDuel.getState() != Duel.DuelState.ACTIVE) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+
+        // Check if in arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            Arena arena = plugin.getArenaManager().getPlayerArena(player);
+            if (!arena.getSettings().canDropItems()) {
+                event.setCancelled(true);
+            }
+        }
+
+        // Check if in duel
+        if (plugin.getDuelManager().isInDuel(player)) {
+            Duel duel = plugin.getDuelManager().getPlayerDuel(player);
+            if (!duel.getZone().getSettings().canDropItems()) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onEntityPickupItem(EntityPickupItemEvent event) {
+        if (!(event.getEntity() instanceof Player)) {
+            return;
+        }
+
+        Player player = (Player) event.getEntity();
+
+        // Check if in arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            Arena arena = plugin.getArenaManager().getPlayerArena(player);
+            if (!arena.getSettings().canDropItems()) {
+                event.setCancelled(true);
+            }
+        }
+
+        // Check if in duel
+        if (plugin.getDuelManager().isInDuel(player)) {
+            Duel duel = plugin.getDuelManager().getPlayerDuel(player);
+            if (!duel.getZone().getSettings().canDropItems()) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerItemConsume(PlayerItemConsumeEvent event) {
+        Player player = event.getPlayer();
+        ItemStack item = event.getItem();
+
+        // Check for notch apple in arena
+        if (plugin.getArenaManager().isInArena(player)) {
+            if (item.getType().name().contains("GOLDEN_APPLE") && item.getType().name().contains("ENCHANTED")) {
+                Arena arena = plugin.getArenaManager().getPlayerArena(player);
+                int delay = arena.getSettings().getNotchAppleDelay();
+
+                if (delay > 0) {
+                    // TODO: Implement cooldown system for items
+                }
+            }
+        }
+
+        // Check for notch apple in duel
+        if (plugin.getDuelManager().isInDuel(player)) {
+            if (item.getType().name().contains("GOLDEN_APPLE") && item.getType().name().contains("ENCHANTED")) {
+                Duel duel = plugin.getDuelManager().getPlayerDuel(player);
+                int delay = duel.getZone().getSettings().getNotchAppleDelay();
+
+                if (delay > 0) {
+                    // TODO: Implement cooldown system for items
+                }
+            }
+        }
+    }
+
+    private boolean isInLobby(Player player) {
+        // Check if player is in lobby world
+        Location lobby = plugin.getConfigManager().getLobbyLocation();
+        return lobby != null && player.getWorld().equals(lobby.getWorld());
+    }
+
+    private boolean canBypassLobbyRestrictions(Player player) {
+        return player.hasPermission("csspvp.bypass.lobby") &&
+                plugin.getConfigManager().getConfig().getBoolean("lobby.op-bypass", true);
     }
 }
